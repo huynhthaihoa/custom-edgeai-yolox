@@ -1,6 +1,10 @@
-# YOLO-6D-Pose Multi-Object 6D Pose Estimation Model
+# YOLO-Pose Model
 This repository is the official implementation of the paper ["**YOLO-Pose: Enhancing YOLO for Multi Person Pose Estimation Using Object
-Keypoint Similarity Loss**"](https://arxiv.org/pdf/2204.06806.pdf). It contains YOLOX based models for Keypoint Detection / Human Pose estimation / 2D Pose estimation.
+Keypoint Similarity Loss**"](https://arxiv.org/pdf/2204.06806.pdf). It contains YOLOX-based models for Keypoint Detection / Human Pose estimation / 2D Pose estimation.
+
+## Environment
+
+Please refer to [environment.yml](environment.yml)
 
 ## Dataset format
 This repository can support Keypoint Detection dataset as long as the dataset follows the [COCO Keypoint Detection](https://cocodataset.org/#keypoints-2017) dataset format - for more details refer to [person_keypoints_train2017.json and person_keypoints_val2017.json inside](http://images.cocodataset.org/annotations/annotations_trainval2017.zip). The connections between the Keypoints (called Skeleton) are predefined in the dataset itself. 
