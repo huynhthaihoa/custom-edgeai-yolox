@@ -9,7 +9,10 @@ import cv2
 import numpy as np
 from math import acos, sin, sqrt, copysign
 from pycocotools.coco import COCO
-from plyfile import PlyData
+try:
+    from plyfile import PlyData
+except:
+    pass
 import yaml
 import json
 

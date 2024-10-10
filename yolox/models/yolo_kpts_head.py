@@ -268,8 +268,10 @@ class YOLOXHeadKPTS(nn.Module):
                 [x.flatten(start_dim=2) for x in outputs], dim=2
             ).permute(0, 2, 1)
             if self.decode_in_inference:
+                # print("option 1!")
                 return self.decode_outputs(outputs, dtype=xin[0].type())
             else:
+                # print("option 2:", outputs.shape)
                 return outputs
 
     def get_output_and_grid(self, output, k, stride, dtype):
@@ -311,11 +313,21 @@ class YOLOXHeadKPTS(nn.Module):
         kpt_conf_grids = torch.zeros_like(grids)[...,0:1]
         kpt_grids = torch.cat((grids, kpt_conf_grids), dim=2)
         strides = torch.cat(strides, dim=1).type(dtype)
+        
+        kpt_grids_repeat = kpt_grids.repeat(1,1,self.num_kpts)
 
+        # print("grid:", kpt_grids_repeat)
+        # print("stride:", strides)
+        # print("hello:", outputs[...,  6:].size(), kpt_grids_repeat.size(), kpt_grids_repeat.min(), kpt_grids_repeat.max(), strides.size())
+        
         outputs[..., :2] = (outputs[..., :2] + grids) * strides
         outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
-        #outputs[...,  6:] = (outputs[..., 6:] + kpt_grids.repeat(1,1,self.num_kpts)) * strides
-        outputs[...,  6:] = (2*outputs[..., 6:] - 0.5  + kpt_grids.repeat(1,1,self.num_kpts)) * strides
+        outputs[...,  6:] = (2*outputs[..., 6:] - 0.5  + kpt_grids_repeat) * strides
+        # print("raw model output:", outputs[..., 6:], outputs[..., 6:].size())
+
+        # import numpy as np
+        # np.save("raw.npy", outputs[..., 6:])
+        
         return outputs
 
     def get_losses(

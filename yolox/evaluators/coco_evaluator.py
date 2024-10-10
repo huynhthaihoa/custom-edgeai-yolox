@@ -9,7 +9,10 @@ import json
 import tempfile
 import time
 from loguru import logger
-from tabulate import tabulate
+try:
+    from tabulate import tabulate
+except:
+    pass
 from tqdm import tqdm
 
 import numpy as np

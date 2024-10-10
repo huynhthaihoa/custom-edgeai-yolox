@@ -36,11 +36,14 @@ def filter_box(output, scale_range):
 
 def postprocess(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, class_agnostic=False, human_pose=False):
     box_corner = prediction.new(prediction.shape)
+    
     box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
     box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
     box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
     box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
     prediction[:, :, :4] = box_corner[:, :, :4]
+    
+    # print("model output shape:", prediction.shape)
 
     output = [None for _ in range(len(prediction))]
     for i, image_pred in enumerate(prediction):
@@ -48,16 +51,30 @@ def postprocess(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, class_agn
         # If none are remaining => process next image
         if not image_pred.size(0):
             continue
+        
+        # np.save("pred.npy", image_pred)
+        
+        # print("# of classes:", num_classes)
+        
         # Get score and class with highest confidence
         class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
-
+        
+        # np.save("class_conf.npy", class_conf)
+        
+        # print("confidence:", class_conf, class_conf.size())
         conf_mask = (image_pred[:, 4] * class_conf.squeeze() >= conf_thre).squeeze()
+        # print("conf_mask:", conf_mask, conf_mask.size())
         if not human_pose:
             # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
             detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float()), 1)
         else:
+            #print("human pose")
             # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred, kpts)
             detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 6:]), 1)
+            # print("detections:", detections.size())
+            # print("type:", image_pred[:, 6:].dtype)
+                    
+        # print("conf filter:", hello[0])
 
         detections = detections[conf_mask]
         if not detections.size(0):
@@ -77,11 +94,17 @@ def postprocess(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, class_agn
                 nms_thre,
             )
 
+        # np.save("nms_index.npy", nms_out_index)
+
         detections = detections[nms_out_index]
+        
+        # print("after nms:", detections[0])
+        
         if output[i] is None:
             output[i] = detections
         else:
             output[i] = torch.cat((output[i], detections))
+        # print("kpts:", detections[:, 7:])
 
     return output
 
@@ -92,7 +115,7 @@ def postprocess_object_pose(prediction, num_classes, conf_thre=0.7, nms_thre=0.4
     box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
     box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
     prediction[:, :, :4] = box_corner[:, :, :4]
-
+    
     output = [None for _ in range(len(prediction))]
     for i, image_pred in enumerate(prediction):
 
@@ -153,6 +176,7 @@ def postprocess_export(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, ta
         tensor_cat_inp = [image_pred[:, :4], conf, class_pred.float()]
         if task == "human_pose":
             tensor_cat_inp.extend([image_pred[:,6:]])
+            #print(image_pred[:,6:].size, torch.min(image_pred[:6:]), torch.max(image_pred[:6:]))
         detections = torch.cat(tensor_cat_inp, 1)
 
         detections = detections[conf_mask]

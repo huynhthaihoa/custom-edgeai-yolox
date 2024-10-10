@@ -6,7 +6,10 @@ from copy import deepcopy
 
 import torch
 import torch.nn as nn
-from thop import profile
+try:
+    from thop import profile
+except:
+    pass
 
 __all__ = [
     "fuse_conv_and_bn",

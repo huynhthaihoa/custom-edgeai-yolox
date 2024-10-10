@@ -6,8 +6,10 @@ import ast
 import pprint
 from abc import ABCMeta, abstractmethod
 from typing import Dict
-from tabulate import tabulate
-
+try:
+    from tabulate import tabulate
+except:
+    pass
 import torch
 from torch.nn import Module
 

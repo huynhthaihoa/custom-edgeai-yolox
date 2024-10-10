@@ -1,7 +1,10 @@
 import torch
 import numpy as np
 from os import path
-from plyfile import PlyData
+try:
+    from plyfile import PlyData
+except:
+    pass
 from loguru import logger
 from math import cos, sin
 from .dist import get_local_rank

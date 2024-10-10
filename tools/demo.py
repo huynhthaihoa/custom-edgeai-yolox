@@ -21,6 +21,11 @@ from yolox.utils import fuse_model, get_model_info, postprocess, postprocess_obj
 from yolox.utils.object_pose_utils  import decode_rotation_translation
 from yolox.utils.plots import plot_one_box, colors
 
+try:
+    import onnxruntime
+except:
+    pass
+
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
 _NUM_CLASSES = {"coco":80, "lm":15, "lmo": 8, "ycbv": 21, "coco_kpts":1}
 
@@ -117,7 +122,10 @@ class Predictor(object):
         fp16=False,
         legacy=False,
         task="2dod",
-        data_set="coco"
+        data_set="coco",
+        onnx=False,
+        output_names = None,
+        input_names = None
     ):
         self.model = model
         self.cls_names = cls_names
@@ -130,8 +138,9 @@ class Predictor(object):
         self.fp16 = fp16
         self.preproc = ValTransform(legacy=legacy)
         self.task = task
+        # if self.task == "human_pose"
         self.data_set = data_set
-        self.cad_models = model.head.cad_models
+        # self.cad_models = model.head.cad_models
         if trt_file is not None:
             from torch2trt import TRTModule
 
@@ -141,6 +150,14 @@ class Predictor(object):
             x = torch.ones(1, 3, exp.test_size[0], exp.test_size[1]).cuda()
             self.model(x)
             self.model = model_trt
+            
+        self.onnx = onnx
+        self.output_names = output_names
+        self.input_names = input_names
+        
+        # if self.onnx:
+        #     sess_options = onnxruntime.SessionOptions()
+        #     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     def inference(self, img):
         img_info = {"id": 0}
@@ -160,18 +177,62 @@ class Predictor(object):
 
         img, _ = self.preproc(img, None, self.test_size)
         img_info["img"] = img.transpose(1, 2, 0)
-        img = torch.from_numpy(img).unsqueeze(0)
-        img = img.float()
-        if self.device == "gpu":
-            img = img.cuda()
-            if self.fp16:
-                img = img.half()  # to FP16
+        if self.onnx:
+            img = np.expand_dims(img, 0)
+        else:
+            img = torch.from_numpy(img).unsqueeze(0)
+            img = img.float()
+            if self.device == "gpu":
+                img = img.cuda()
+                if self.fp16:
+                    img = img.half()  # to FP16
 
         with torch.no_grad():
             t0 = time.time()
-            outputs = self.model(img)
-            if self.decoder is not None:
-                outputs = self.decoder(outputs, dtype=outputs.type())
+            if self.onnx:
+                outputs = self.model.run(self.output_names, {self.input_names[0]: img})[0]
+                outputs = torch.from_numpy(outputs)
+                
+                grids = []
+                strides = []
+                
+                self_strides = [8, 16, 32]
+                hsizes = [self.test_size[0] // stride for stride in self_strides]
+                wsizes = [self.test_size[1] // stride for stride in self_strides]
+                
+                for hsize, wsize, stride in zip(hsizes, wsizes, self_strides):
+                    yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
+                    grid = torch.stack((xv, yv), 2).view(1, -1, 2)
+                    grids.append(grid)
+                    shape = grid.shape[:2]
+                    strides.append(torch.full((*shape, 1), stride))
+
+                grids = torch.cat(grids, dim=1)#.type(dtype)
+                kpt_conf_grids = torch.zeros_like(grids)[...,0:1]
+                kpt_grids = torch.cat((grids, kpt_conf_grids), dim=2)
+                strides = torch.cat(strides, dim=1)#.type(dtype)
+                
+                kpt_grids_repeat = kpt_grids.repeat(1,1,17)
+
+                # print("grid:", kpt_grids_repeat)
+                # print("stride:", strides)
+                # print("hello:", outputs[...,  6:].size(), kpt_grids_repeat.size(), kpt_grids_repeat.min(), kpt_grids_repeat.max(), strides.size())
+                
+                outputs[..., :2] = (outputs[..., :2] + grids) * strides
+                outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
+                outputs[...,  6:] = (2*outputs[..., 6:] - 0.5  + kpt_grids_repeat) * strides
+                
+            else:
+                outputs = self.model(img)
+                if self.decoder is not None:
+                    logger.warning("need decoder!")
+                    outputs = self.decoder(outputs, dtype=outputs.type())
+                else:
+                    logger.warning("no need decoder")
+            
+            print(outputs.size())
+            # else:
+                # print("no need decoder!")
             if self.task == "object_pose":
                 outputs = postprocess_object_pose(
                     outputs, self.num_classes, self.confthre,
@@ -180,8 +241,9 @@ class Predictor(object):
             else:
                 outputs = postprocess(
                     outputs, self.num_classes, self.confthre,
-                    self.nmsthre, class_agnostic=True
+                    self.nmsthre, class_agnostic=True, human_pose=(self.task == "human_pose")
                 )
+                # print(outputs.shape)
             logger.info("Infer time: {:.4f}s".format(time.time() - t0))
         return outputs, img_info
 
@@ -197,10 +259,18 @@ class Predictor(object):
         # preprocessing: resize
         bboxes /= ratio
 
-        cls = output[:, 6]
+        
         scores = output[:, 4] * output[:, 5]
-
-        vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names)
+        cls = output[:, 6]
+        # print("class:", len(cls))
+        if len(output[0]) == 58:
+            # print("visualize body keypoints!")
+            kpts = np.array(output[:, 7:]).reshape((-1, 17, 3))
+            # print(kpts)
+            # kpts = kpts.reshape(())
+            vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names, kpts)
+        else:
+            vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names)
         return vis_res
 
     def visual_object_pose(self, output, img_info, cls_conf):
@@ -326,7 +396,10 @@ def main(exp, args):
         exp.test_size = (args.tsize, args.tsize)
 
     model = exp.get_model()
-    logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
+    try:
+        logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
+    except:
+        pass
 
     if args.device == "gpu":
         model.cuda()
@@ -340,9 +413,24 @@ def main(exp, args):
         else:
             ckpt_file = args.ckpt
         logger.info("loading checkpoint")
-        ckpt = torch.load(ckpt_file, map_location="cpu")
-        # load the model state dict
-        model.load_state_dict(ckpt["model"])
+        if ckpt_file.endswith('onnx') is True:
+            sess_options = onnxruntime.SessionOptions()
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+            model = onnxruntime.InferenceSession(
+                ckpt_file, providers=["CPUExecutionProvider"], sess_options=sess_options
+            )
+            model_inputs = model.get_inputs()
+            input_names = [model_inputs[i].name for i in range(len(model_inputs))]
+            model_outputs = model.get_outputs()
+            output_names = [model_outputs[i].name for i in range(len(model_outputs))]
+            onnx = True
+        else:
+            ckpt = torch.load(ckpt_file, map_location="cpu")
+            # load the model state dict
+            model.load_state_dict(ckpt["model"])
+            input_names = None
+            output_names = None
+            onnx = False
         logger.info("loaded checkpoint done.")
 
     if args.fuse:
@@ -370,7 +458,8 @@ def main(exp, args):
 
     predictor = Predictor(
         model, exp, cls_names, trt_file, decoder,
-        args.device, args.fp16, args.legacy, args.task, exp.data_set
+        args.device, args.fp16, args.legacy, args.task, exp.data_set,
+        onnx, output_names, input_names
     )
     current_time = time.localtime()
     if args.demo == "image":

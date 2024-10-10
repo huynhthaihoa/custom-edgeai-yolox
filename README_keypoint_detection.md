@@ -23,4 +23,14 @@ python3 tools/export_onnx.py --output-name yolox_s_human_pose_ti_lite.onnx -n yo
 ## Dataset annotation
 If you need to annotate a custom dataset, it can be done using the CVAT tool: https://www.cvat.ai/
 
-Make sure that the format of json annotation file is similar to that of COCO Keypoint Detection. The object type, number of keypoints, name of keypoints, the connection between keypoints (skeleton) etc. can be changed. 
+Make sure that the format of json annotation file is similar to that of COCO Keypoint Detection. The object type, number of keypoints, name of keypoints, the connection between keypoints (skeleton) etc. can be changed.
+
+python3 tools/export_onnx.py --output-name yolox_s_human_pose_ti_lite.onnx -n yolox_s_human_pose_ti_lite --task human_pose -c pretrained_models/yolox-s-ti-lite_39p1_57p9_checkpoint.pth
+
+python -m tools.export_onnx --output-name yolox_s_pose_ti_lite_640_20220301_checkpoint.onnx -n yolox_s_human_pose_ti_lite --task human_pose -c yolox_s_pose_ti_lite_640_20220301_checkpoint.pth
+
+python -m tools.demo image -n yolox_s_human_pose_ti_lite -c yolox_s_pose_ti_lite_640_20220301_checkpoint.pth --path icms.jpg --conf 0.25 --nms 0.45 --tsize 640 --save_result --dataset coco_kpts --task human_pose
+
+python -m tools.demo image -n yolox_s_human_pose_ti_lite -c yolox_s_pose_ti_lite_640_20220301_checkpoint.onnx --path icms.jpg --conf 0.25 --nms 0.45 --tsize 640 --save_result --dataset coco_kpts --task human_pose
+
+python -m tools.demo image -n yolox_s_human_pose_ti_lite -c yolox_s_pose_ti_lite_640_20220301_checkpoint.pth --path icms.jpg --conf 0.25 --nms 0.45 --tsize 640 --save_result --dataset coco_kpts --task human_pose

@@ -7,8 +7,18 @@ import numpy as np
 
 __all__ = ["vis"]
 
+palletes = [[255, 128, 0], [255, 153, 51], [255, 178, 102],
+                    [230, 230, 0], [255, 153, 255], [153, 204, 255],
+                    [255, 102, 255], [255, 51, 255], [102, 178, 255],
+                    [51, 153, 255], [255, 153, 153], [255, 102, 102],
+                    [255, 51, 51], [153, 255, 153], [102, 255, 102],
+                    [51, 255, 51], [0, 255, 0], [0, 0, 255], [255, 0, 0],
+                    [255, 255, 255]]
+skeleton = [[16, 14], [14, 12], [17, 15], [15, 13], [12, 13], [6, 12],
+                    [7, 13], [6, 7], [6, 8], [7, 9], [8, 10], [9, 11], [2, 3],
+                    [1, 2], [1, 3], [2, 4], [3, 5], [4, 6], [5, 7]]
 
-def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None):
+def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None, kpts=None):
 
     for i in range(len(boxes)):
         box = boxes[i]
@@ -38,6 +48,28 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None):
             -1
         )
         cv2.putText(img, text, (x0, y0 + txt_size[1]), font, 0.4, txt_color, thickness=1)
+        
+        if kpts is not None:
+            person_kpts = kpts[i]
+            for kid in range(17):#range(num_kpts):
+                r, g, b = palletes[kid]
+                try:
+                    #print(person_kpts[kid][0], person_kpts[kid][1])
+                    cv2.circle(img, (person_kpts[kid][0], person_kpts[kid][1]), 1, (int(r), int(g), int(b)), -1)
+                    cv2.putText(img, str(kid), (person_kpts[kid][0], person_kpts[kid][1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (int(r), int(g), int(b)), 2)
+                except:
+                    pass            
+            for sk in skeleton:
+                # if sk[0] - 1 < begin_idx or sk[0] - 1 >= end_idx or sk[1] - 1 < begin_idx or sk[1] - 1 >= end_idx:
+                #     continue
+                # r, g, b = pose_limb_color[sk_id]
+                pos1 = (person_kpts[sk[0] - 1][0], person_kpts[sk[0] - 1][1])
+                pos2 = (person_kpts[sk[1] - 1][0], person_kpts[sk[1] - 1][1])
+                try:
+                    cv2.line(img, pos1, pos2, (0, 0, 0), thickness=1)
+                except:
+                    pass
+            # cv2.line(img, pos1, pos2, (int(r), int(g), int(b)), thickness=2)
 
     return img
 
