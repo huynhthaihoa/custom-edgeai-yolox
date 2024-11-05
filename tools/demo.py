@@ -259,15 +259,11 @@ class Predictor(object):
         # preprocessing: resize
         bboxes /= ratio
 
-        
         scores = output[:, 4] * output[:, 5]
         cls = output[:, 6]
-        # print("class:", len(cls))
         if len(output[0]) == 58:
-            # print("visualize body keypoints!")
             kpts = np.array(output[:, 7:]).reshape((-1, 17, 3))
-            # print(kpts)
-            # kpts = kpts.reshape(())
+            kpts [:, :, :2] /= ratio
             vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names, kpts)
         else:
             vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names)
