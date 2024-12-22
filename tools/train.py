@@ -147,6 +147,24 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
+    
+    # new param: to set up optimizer, select one from sgd (default), adam, adamw (recommended)
+    parser.add_argument("--optimizer_type",
+                        help="optimizer",
+                        default="sgd",
+                        type=str)
+    
+    # set up HSV augmentation configs
+    
+    # Augmentation config for dimension Hue (H), set as 0 if one wants to skip augmentation on Hue
+    parser.add_argument("--hgain", default=5, type=int)
+    
+    # Augmentation config for dimension Saturation (S), set as 0 if one wants to skip augmentation on Saturation
+    parser.add_argument("--sgain", default=30, type=int)
+    
+    # Augmentation config for dimension Value (V), set as 0 if one wants to skip augmentation on Value
+    parser.add_argument("--vgain", default=30, type=int)
+    
     return parser
 
 
@@ -191,6 +209,9 @@ def main(exp, args):
         if args.visualize:
             exp.visualize = args.visualize
 
+    # temporarily support SGD (default), Adam, and AdamW
+    assert args.optimizer_type in ["adam", "adamw", "sgd"]
+    
     trainer = Trainer(exp, args)
     trainer.train()
 

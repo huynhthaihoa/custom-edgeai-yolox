@@ -167,7 +167,7 @@ class Trainer:
         model.to(self.device)
 
         # solver related init
-        self.optimizer = self.exp.get_optimizer(self.args.batch_size)
+        self.optimizer = self.exp.get_optimizer(self.args.batch_size, self.args.optimizer_type)
 
         # value of epoch will be set in `resume_train`
         model = self.resume_train(model)
@@ -179,6 +179,10 @@ class Trainer:
             is_distributed=self.is_distributed,
             no_aug=self.no_aug,
             cache_img=self.args.cache,
+            # HSV augmentation setup
+            hgain = self.args.hgain,
+            sgain = self.args.sgain,
+            vgain = self.args.vgain
         )
         logger.info("init prefetcher, this might take one minute or less...")
         self.prefetcher = DataPrefetcherCPU(self.train_loader) if self.exp.device_type == "cpu" else DataPrefetcher(self.train_loader)

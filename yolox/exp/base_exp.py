@@ -31,12 +31,13 @@ class BaseExp(metaclass=ABCMeta):
 
     @abstractmethod
     def get_data_loader(
-        self, batch_size: int, is_distributed: bool
+        self, batch_size: int, is_distributed: bool, 
+        hgain: int, sgain: int, vgain: int
     ) -> Dict[str, torch.utils.data.DataLoader]:
         pass
 
     @abstractmethod
-    def get_optimizer(self, batch_size: int) -> torch.optim.Optimizer:
+    def get_optimizer(self, batch_size: int, optimizer_type: str) -> torch.optim.Optimizer:
         pass
 
     @abstractmethod

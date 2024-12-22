@@ -98,7 +98,10 @@ class Exp(BaseExp):
         return self.model
 
     def get_data_loader(
-        self, batch_size, is_distributed, no_aug=False, cache_img=False
+        self, batch_size, is_distributed, no_aug=False, cache_img=False,
+        hgain=5,
+        sgain=30,
+        vgain=30
     ):
         from yolox.data import (
             COCODataset,
@@ -125,10 +128,15 @@ class Exp(BaseExp):
                     data_dir=self.data_dir,
                     json_file=self.train_ann,
                     img_size=self.input_size,
+                    
+                    # add hgain + sgain + vgain to the TrainTransform of your desired dataset's Dataloader
                     preproc=TrainTransform(
                         max_labels=50,
                         flip_prob=self.flip_prob,
-                        hsv_prob=self.hsv_prob),
+                        hsv_prob=self.hsv_prob,
+                        hgain=hgain,
+                        sgain=sgain,
+                        vgain=vgain),
                     cache=cache_img,
                 )
             elif self.data_set == "lmo" or self.data_set == "lm":
@@ -141,7 +149,10 @@ class Exp(BaseExp):
                         max_labels=50,
                         flip_prob=self.flip_prob,
                         hsv_prob=self.hsv_prob,
-                        object_pose=self.object_pose),
+                        object_pose=self.object_pose,
+                        hgain=hgain,
+                        sgain=sgain,
+                        vgain=vgain),
                     cache=cache_img,
                     object_pose=self.object_pose,
                    base_dir=base_dir
@@ -155,7 +166,10 @@ class Exp(BaseExp):
                         max_labels=50,
                         flip_prob=self.flip_prob,
                         hsv_prob=self.hsv_prob,
-                        object_pose=self.object_pose),
+                        object_pose=self.object_pose,
+                        hgain=hgain,
+                        sgain=sgain,
+                        vgain=vgain),
                     cache=cache_img,
                     object_pose=self.object_pose
                 )
@@ -167,7 +181,10 @@ class Exp(BaseExp):
                     preproc=TrainTransform(
                         max_labels=50,
                         flip_prob=self.flip_prob,
-                        hsv_prob=self.hsv_prob),
+                        hsv_prob=self.hsv_prob,
+                        hgain=hgain,
+                        sgain=sgain,
+                        vgain=vgain),
                     cache=cache_img,
                     human_pose=False,
                 )
@@ -180,7 +197,10 @@ class Exp(BaseExp):
                 max_labels=120,
                 flip_prob=self.flip_prob,
                 hsv_prob=self.hsv_prob,
-                object_pose=self.object_pose),
+                object_pose=self.object_pose,
+                        hgain=hgain,
+                        sgain=sgain,
+                        vgain=vgain),
             degrees=self.degrees,
             translate=self.translate,
             mosaic_scale=self.mosaic_scale,
@@ -248,7 +268,7 @@ class Exp(BaseExp):
             targets[..., 2::2] = targets[..., 2::2] * scale_y
         return inputs, targets
 
-    def get_optimizer(self, batch_size):
+    def get_optimizer(self, batch_size, optimizer_type="sgd"):
         if "optimizer" not in self.__dict__:
             if self.warmup_epochs > 0:
                 lr = self.warmup_lr
@@ -264,13 +284,27 @@ class Exp(BaseExp):
                     pg0.append(v.weight)  # no decay
                 elif hasattr(v, "weight") and isinstance(v.weight, nn.Parameter):
                     pg1.append(v.weight)  # apply decay
-
-            optimizer = torch.optim.SGD(
-                pg0, lr=lr, momentum=self.momentum, nesterov=True
-            )
-            optimizer.add_param_group(
-                {"params": pg1, "weight_decay": self.weight_decay}
-            )  # add pg1 with weight_decay
+            if optimizer_type == "sgd":
+                optimizer = torch.optim.SGD(
+                    pg0, lr=lr, momentum=self.momentum, nesterov=True
+                )
+                optimizer.add_param_group(
+                    {"params": pg1, "weight_decay": self.weight_decay}
+                )  # add pg1 with weight_decay
+            elif optimizer_type == "adam":
+                optimizer = torch.optim.Adam(
+                    pg0, lr=lr
+                )
+                optimizer.add_param_group(
+                    {"params": pg1}
+                )
+            elif optimizer_type == "adamw":
+                optimizer = torch.optim.AdamW(
+                    pg0, lr=lr
+                )
+                optimizer.add_param_group(
+                    {"params": pg1}
+                )                
             optimizer.add_param_group({"params": pg2})
             self.optimizer = optimizer
 

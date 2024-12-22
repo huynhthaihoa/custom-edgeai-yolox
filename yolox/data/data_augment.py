@@ -18,15 +18,35 @@ import numpy as np
 from yolox.utils import xyxy2cxcywh
 
 
-def augment_hsv(img, hgain=5, sgain=30, vgain=30):
+def augment_hsv(img, hgain=5, sgain=30, vgain=30, apply_augment=[True, True, True]):
+    """Augment HSV
+
+    Args:
+        img (_type_): _description_
+        hgain (int, optional): Hue augmentation config. Defaults to 5.
+        sgain (int, optional): Saturation augmentation config. Defaults to 30.
+        vgain (int, optional): Value augmentation config. Defaults to 30.
+        apply_augment (list, optional): To select which dim(s) from (H, S, V) are being augmented. Defaults to [True, True, True].
+
+    Returns:
+        _type_: _description_
+    """
     hsv_augs = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain]  # random gains
     hsv_augs *= np.random.randint(0, 2, 3)  # random selection of h, s, v
     hsv_augs = hsv_augs.astype(np.int16)
     img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
-
-    img_hsv[..., 0] = (img_hsv[..., 0] + hsv_augs[0]) % 180
-    img_hsv[..., 1] = np.clip(img_hsv[..., 1] + hsv_augs[1], 0, 255)
-    img_hsv[..., 2] = np.clip(img_hsv[..., 2] + hsv_augs[2], 0, 255)
+    
+    # apply augmentation for Hue (H)
+    if apply_augment[0]:
+        img_hsv[..., 0] = (img_hsv[..., 0] + hsv_augs[0]) % 180
+    
+    # apply augmentation for Saturation
+    if apply_augment[1]:
+        img_hsv[..., 1] = np.clip(img_hsv[..., 1] + hsv_augs[1], 0, 255)
+    
+    # apply augmentation for Value
+    if apply_augment[2]:
+        img_hsv[..., 2] = np.clip(img_hsv[..., 2] + hsv_augs[2], 0, 255)
 
     cv2.cvtColor(img_hsv.astype(img.dtype), cv2.COLOR_HSV2BGR, dst=img)  # no return needed
 
@@ -224,7 +244,7 @@ def preproc(img, input_size, swap=(2, 0, 1)):
 
 
 class TrainTransform:
-    def __init__(self, max_labels=50, flip_prob=0.5, hsv_prob=1.0, object_pose = False, human_pose=False, flip_index=None, num_kpts=17):
+    def __init__(self, max_labels=50, flip_prob=0.5, hsv_prob=1.0, object_pose = False, human_pose=False, flip_index=None, num_kpts=17, hgain=5, sgain=30, vgain=30):#apply_augment_hsv=[True, True, True]):
         self.max_labels = max_labels
         self.flip_prob = flip_prob
         self.hsv_prob = hsv_prob
@@ -238,6 +258,11 @@ class TrainTransform:
             self.target_size = (5+2*self.num_kpts)  # 5+ 2*17
         else:
             self.target_size = 5
+        
+        self.hgain = hgain
+        self.sgain = sgain
+        self.vgain = vgain
+        self.apply_augment_hsv = [(self.hgain != 0), (self.sgain != 0), (self.vgain != 0)]
 
     def __call__(self, image, targets, input_dim):
         boxes = targets[:, :4].copy()
@@ -266,7 +291,7 @@ class TrainTransform:
         boxes_o = xyxy2cxcywh(boxes_o)
 
         if random.random() < self.hsv_prob:
-            augment_hsv(image)
+            augment_hsv(image, self.hgain, self.sgain, self.vgain, self.apply_augment_hsv)
         if self.human_pose:
             image_t, boxes, human_kpts = _mirror(image, boxes, self.flip_prob, human_pose=self.human_pose, object_pose=self.object_pose, human_kpts=human_kpts, flip_index=self.flip_index)
         elif self.object_pose:
