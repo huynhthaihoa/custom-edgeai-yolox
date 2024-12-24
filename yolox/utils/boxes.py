@@ -154,7 +154,7 @@ def postprocess_object_pose(prediction, num_classes, conf_thre=0.7, nms_thre=0.4
     return output
 
 
-def postprocess_export(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, task=None):
+def postprocess_export(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, task=None, class_agnostic=True):
     """
     This function is called while exporting an OD model or human-pose estimation model. Output of the ONNX model is ensured to match the TIDL output in float mode.
     """
@@ -183,13 +183,26 @@ def postprocess_export(prediction, num_classes, conf_thre=0.7, nms_thre=0.45, ta
         # manu: commenting out to avoid onnx export error.
         # if not detections.size(0):
         #     continue
-        class_2d_offset = detections[:, -1:] * 4096  # class_2d_offser
+        # class_2d_offset = detections[:, -1:] * 4096  # class_2d_offser
 
-        nms_out_index = torchvision.ops.nms(
-            detections[:, :4] + class_2d_offset,
-            detections[:, 4],
-            nms_thre,
-        )
+        # nms_out_index = torchvision.ops.nms(
+        #     detections[:, :4] + class_2d_offset,
+        #     detections[:, 4],
+        #     nms_thre,
+        # )
+        if class_agnostic:
+            nms_out_index = torchvision.ops.nms(
+                detections[:, :4], #+ class_2d_offset,
+                detections[:, 4] * detections[:, -2],
+                nms_thre,
+            )
+        else:
+            nms_out_index = torchvision.ops.batched_nms(
+                detections[:, :4], #+ class_2d_offset,
+                detections[:, 4] * detections[:, -2],
+                detections[:, -1],
+                nms_thre,
+            )
 
         detections = detections[nms_out_index]
         if output[i] is None:
@@ -338,7 +351,7 @@ def cxcywh2xyxy_export(cx,cy,w,h):
 
 
 class PostprocessExport(nn.Module):
-    def __init__(self, conf_thre=0.7, nms_thre=0.45, num_classes=80, object_pose=False, camera_matrix=None, task=None):
+    def __init__(self, conf_thre=0.7, nms_thre=0.45, num_classes=80, object_pose=False, camera_matrix=None, task=None, class_agnostic=True):
         super(PostprocessExport, self).__init__()
         self.conf_thre = conf_thre
         self.nms_thre = nms_thre
@@ -346,10 +359,11 @@ class PostprocessExport(nn.Module):
         self.object_pose = object_pose
         self.camera_matrix = camera_matrix
         self.task = task
+        self.class_agnostic = class_agnostic
 
     def forward(self, prediction):
         if not self.object_pose:
-            return postprocess_export(prediction, self.num_classes, conf_thre=self.conf_thre, nms_thre=self.nms_thre, task=self.task)
+            return postprocess_export(prediction, self.num_classes, conf_thre=self.conf_thre, nms_thre=self.nms_thre, task=self.task, class_agnostic=self.class_agnostic)
         else:
             return postprocess_export_object_pose(prediction, self.num_classes, conf_thre=self.conf_thre, nms_thre=self.nms_thre, camera_matrix=self.camera_matrix)
 

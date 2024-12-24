@@ -76,6 +76,7 @@ def make_parser():
     parser.add_argument("-n", "--name", type=str, default=None, help="model name")
     parser.add_argument("-c", "--ckpt", default=None, type=str, help="ckpt path")
     parser.add_argument("--export-det",  action='store_true', help='export the nms part in ONNX model')
+    parser.add_argument("--aware",  action='store_true', help='if set, use class-aware NMS (default is class-agnostic NMS)')
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -236,7 +237,7 @@ def main(kwargs=None, exp=None):
         elif args.task == "human_pose":
             post_process = PostprocessExport(conf_thre=0.05, nms_thre=0.45, num_classes=exp.num_classes, task=args.task)
         else:
-            post_process = PostprocessExport(conf_thre=0.25, nms_thre=0.45, num_classes=exp.num_classes)
+            post_process = PostprocessExport(conf_thre=0.25, nms_thre=0.45, num_classes=exp.num_classes, class_agnostic=(not self.class_aware))
         model_det = nn.Sequential(model, post_process)
         model_det.eval()
         args.output = 'detections'
