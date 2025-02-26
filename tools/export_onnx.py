@@ -237,7 +237,7 @@ def main(kwargs=None, exp=None):
         elif args.task == "human_pose":
             post_process = PostprocessExport(conf_thre=0.05, nms_thre=0.45, num_classes=exp.num_classes, task=args.task)
         else:
-            post_process = PostprocessExport(conf_thre=0.25, nms_thre=0.45, num_classes=exp.num_classes, class_agnostic=(not self.class_aware))
+            post_process = PostprocessExport(conf_thre=0.25, nms_thre=0.45, num_classes=exp.num_classes, class_agnostic=(not exp.aware))
         model_det = nn.Sequential(model, post_process)
         model_det.eval()
         args.output = 'detections'
@@ -255,7 +255,7 @@ def main(kwargs=None, exp=None):
     img = torch.from_numpy(img)
     dummy_input = torch.randn(args.batch_size, 3, exp.test_size[0], exp.test_size[1])
     if args.export_det:
-        output = model_det(img)
+        _ = model_det(img)
 
     if args.export_det:
         torch.onnx._export(
