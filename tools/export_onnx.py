@@ -53,6 +53,16 @@ def make_parser():
         "--input", default="images", type=str, help="input node name of onnx model"
     )
     parser.add_argument(
+        "-w", "--input-width", type=int, help="input width", default=640
+    )
+    parser.add_argument(
+        "-h", "--input-height", type=int, help="input height", default=640
+    )
+    parser.add_argument(
+        "--input", default="images", type=str, help="input node name of onnx model"
+    )
+
+    parser.add_argument(
         "--output", default="output", type=str, help="output node name of onnx model"
     )
     parser.add_argument(
@@ -170,8 +180,6 @@ def export_prototxt(model, img, onnx_model_name, task=None):
         txt_message = text_format.MessageToString(arch)
         pfile.write(txt_message)
 
-
-
 @logger.catch
 def main(kwargs=None, exp=None):
     args = make_parser().parse_args()
@@ -237,7 +245,7 @@ def main(kwargs=None, exp=None):
         elif args.task == "human_pose":
             post_process = PostprocessExport(conf_thre=0.05, nms_thre=0.45, num_classes=exp.num_classes, task=args.task)
         else:
-            post_process = PostprocessExport(conf_thre=0.25, nms_thre=0.45, num_classes=exp.num_classes, class_agnostic=(not exp.aware))
+            post_process = PostprocessExport(conf_thre=0.25, nms_thre=0.45, num_classes=exp.num_classes, class_agnostic=(not args.aware))
         model_det = nn.Sequential(model, post_process)
         model_det.eval()
         args.output = 'detections'
@@ -249,11 +257,11 @@ def main(kwargs=None, exp=None):
         img = cv2.imread("../edgeai-yolox/assets/sample_lmo_pbr.jpg")
     else:
         img = cv2.imread("../edgeai-yolox/assets/dog.jpg")
-    img, ratio = preprocess(img, exp.test_size)
+    img, ratio = preprocess(img, (args.input_height, args.input_width))
     img = img[None, ...]
     img = img.astype('float32')
     img = torch.from_numpy(img)
-    dummy_input = torch.randn(args.batch_size, 3, exp.test_size[0], exp.test_size[1])
+    dummy_input = torch.randn(args.batch_size, 3, args.input_height, args.input_width)
     if args.export_det:
         _ = model_det(img)
 
