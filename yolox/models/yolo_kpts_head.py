@@ -25,7 +25,13 @@ class YOLOXHeadKPTS(nn.Module):
         act="silu",
         depthwise=False,
         num_kpts = 17,
-        default_sigmas=None
+        default_sigmas=None,
+        weight_cls=0.5,
+        weight_box=0.05,
+        weight_kpts_oks=0.1,
+        weight_kpts_conf=0.5,
+        weight_obj=1.0,
+        weight_l1=0.0
     ):
         """
         Args:
@@ -166,10 +172,17 @@ class YOLOXHeadKPTS(nn.Module):
         self.use_l1 = False
         self.l1_loss = nn.L1Loss(reduction="none")
         self.bcewithlog_loss = nn.BCEWithLogitsLoss(reduction="none")
-        self.iou_loss = IOUloss(reduction="none" ,loss_type="ciou")
+        self.iou_loss = IOUloss(reduction="none", loss_type="ciou")
         self.strides = strides
         self.grids = [torch.zeros(1)] * len(in_channels)
 
+        self.weight_cls = weight_cls#=0.5,
+        self.weight_box = weight_box#=0.05,
+        self.weight_kpts_oks = weight_kpts_oks#=0.1,
+        self.weight_kpts_conf = weight_kpts_conf#=0.5,
+        self.weight_obj = weight_obj#=1.0
+        self.weght_l1 = weight_l1
+        
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
             b = conv.bias.view(self.n_anchors, -1)
@@ -491,7 +504,7 @@ class YOLOXHeadKPTS(nn.Module):
             l1_targets_kpts = torch.cat(l1_targets_kpts, 0)
 
         num_fg = max(num_fg, 1)
-        loss_iou = (
+        loss_box = (
             self.iou_loss(bbox_preds.view(-1, 4)[fg_masks], reg_targets)
         ).sum() / num_fg
         loss_obj = (
@@ -502,10 +515,10 @@ class YOLOXHeadKPTS(nn.Module):
                 cls_preds.view(-1, self.num_classes)[fg_masks], cls_targets
             )
         ).sum() / num_fg
-        loss_kpts, loss_kpts_vis = self.kpts_loss(
+        loss_kpts_oks, loss_kpts_conf = self.kpts_loss(
                 kpts_preds.view(-1, self.num_kpts*3)[fg_masks], kpts_targets, reg_targets)
-        loss_kpts = loss_kpts.sum() / num_fg
-        loss_kpts_vis = loss_kpts_vis.sum() / num_fg
+        loss_kpts_oks = loss_kpts_oks.sum() / num_fg
+        loss_kpts_conf = loss_kpts_conf.sum() / num_fg
 
         if self.use_l1:
             loss_l1 = (
@@ -514,25 +527,39 @@ class YOLOXHeadKPTS(nn.Module):
             loss_l1_kpts = ((
                 self.l1_loss(origin_kpts_preds.view(-1, 2*self.num_kpts)[fg_masks], l1_targets_kpts))*(l1_targets_kpts!=0)
            ).sum() / num_fg / self.num_kpts
-            loss_l1 = 0.0
-            loss_l1_kpts = 0
+            # loss_l1 = 0.0
+            # loss_l1_kpts = 0
         else:
             loss_l1 = 0.0
             loss_l1_kpts = 0
 
-        reg_weight = 5.0
-        loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1 + reg_weight * loss_kpts + loss_kpts_vis + loss_l1_kpts
+# ORIGINAL
+        # reg_weight = 5.0
+        # loss = reg_weight * loss_box + loss_obj + loss_cls + loss_l1 + reg_weight * loss_kpts_oks + loss_kpts_conf + loss_l1_kpts
 
+        # return (
+        #     loss,
+        #     reg_weight * loss_box,
+        #     loss_obj,
+        #     loss_cls,
+        #     loss_l1,
+        #     reg_weight * loss_kpts_oks,
+        #     loss_kpts_conf,
+        #     loss_l1_kpts,
+        #     num_fg / max(num_gts, 1),
+        # )
+# END
+        loss = self.weight_box * loss_box + self.weight_obj * loss_obj + self.weight_cls * loss_cls + self.weght_l1 * loss_l1 + self.weight_kpts_oks * loss_kpts_oks + self.weight_kpts_conf * loss_kpts_conf + self.weght_l1 * loss_l1_kpts        
         return (
             loss,
-            reg_weight * loss_iou,
-            loss_obj,
-            loss_cls,
-            loss_l1,
-            reg_weight * loss_kpts,
-            loss_kpts_vis,
-            loss_l1_kpts,
-            num_fg / max(num_gts, 1),
+            self.weight_box * loss_box,
+            self.weight_obj * loss_obj,
+            self.weight_cls * loss_cls,
+            self.weght_l1 * loss_l1,
+            self.weight_kpts_oks * loss_kpts_oks,
+            self.weight_kpts_conf * loss_kpts_conf,
+            self.weght_l1 * loss_l1_kpts,
+            num_fg / max(num_gts, 1)
         )
 
     def get_l1_target(self, l1_target, gt, stride, x_shifts, y_shifts, eps=1e-8):
@@ -611,7 +638,7 @@ class YOLOXHeadKPTS(nn.Module):
         if mode == "cpu":
             cls_preds_, obj_preds_ = cls_preds_.cpu(), obj_preds_.cpu()
 
-        with torch.cuda.amp.autocast(enabled=False):
+        with torch.amp.autocast(enabled=False):
             cls_preds_ = (
                 cls_preds_.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
                 * obj_preds_.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
@@ -771,13 +798,29 @@ class YOLOXHeadKPTS(nn.Module):
 
 
     def kpts_loss(self, kpts_preds, kpts_targets, bbox_targets):
+        """Keypoint-based loss function.
+        The loss function is based on the OKS (Object Keypoint Similarity) metric.
+        The OKS is a measure of how well the predicted keypoints match the ground truth keypoints.
+
+        Args:
+            kpts_preds: keypoint predictions
+            kpts_targets: keypoint targets
+            bbox_targets: bounding box targets
+
+        Returns:
+            - lkpt:  OKS based loss
+            - lkptv: keypoint confidence loss
+        """        
         sigmas = self.sigmas.to(device=kpts_preds.device)
         kpts_preds_x, kpts_targets_x = kpts_preds[:, 0::3], kpts_targets[:, 0::2]
         kpts_preds_y, kpts_targets_y = kpts_preds[:, 1::3], kpts_targets[:, 1::2]
         kpts_preds_score = kpts_preds[:, 2::3]
         # mask
         kpt_mask = (kpts_targets[:, 0::2] != 0)
+        
+        # keypoint confidence loss
         lkptv = self.bcewithlog_loss(kpts_preds_score, kpt_mask.float()).mean(axis=1)
+        
         # OKS based loss
         d = (kpts_preds_x - kpts_targets_x) ** 2 + (kpts_preds_y - kpts_targets_y) ** 2
         bbox_scale = torch.prod(bbox_targets[:, -2:], dim=1, keepdim=True)  #scale derived from bbox gt

@@ -41,7 +41,7 @@ class Trainer:
         # training related attr
         self.max_epoch = exp.max_epoch
         self.amp_training = args.fp16
-        self.scaler = torch.cuda.amp.GradScaler(enabled=args.fp16)
+        self.scaler = torch.amp.GradScaler(enabled=args.fp16)
         self.is_distributed = get_world_size() > 1
         self.rank = get_rank()
         self.local_rank = get_local_rank()
@@ -118,7 +118,7 @@ class Trainer:
         if self.exp.device_type == "cpu":
             outputs = self.model(inps, targets)
         else:
-            with torch.cuda.amp.autocast(enabled=self.amp_training):
+            with torch.amp.autocast(enabled=self.amp_training):
                 outputs = self.model(inps, targets)
 
         loss = outputs["total_loss"]

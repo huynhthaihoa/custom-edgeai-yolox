@@ -6,6 +6,7 @@ import argparse
 import os
 from loguru import logger
 
+import numpy as np
 import torch
 from torch import nn
 import onnx
@@ -49,14 +50,14 @@ def make_parser():
     parser.add_argument(
         "--output-name", type=str, default="yolox.onnx", help="output name of models"
     )
-    parser.add_argument(
-        "--input", default="images", type=str, help="input node name of onnx model"
-    )
+    # parser.add_argument(
+    #     "--input", default="images", type=str, help="input node name of onnx model"
+    # )
     parser.add_argument(
         "-w", "--input-width", type=int, help="input width", default=640
     )
     parser.add_argument(
-        "-h", "--input-height", type=int, help="input height", default=640
+        "-ih", "--input-height", type=int, help="input height", default=640
     )
     parser.add_argument(
         "--input", default="images", type=str, help="input node name of onnx model"
@@ -231,7 +232,7 @@ def main(kwargs=None, exp=None):
     if ckpt is not None:
         if "model" in ckpt:
             ckpt = ckpt["model"]
-        model.load_state_dict(ckpt)
+        model.load_state_dict(ckpt, strict=False)
     model = replace_module(model, nn.SiLU, SiLU)
     if not args.export_det:
         model.head.decode_in_inference = False
@@ -251,13 +252,14 @@ def main(kwargs=None, exp=None):
         args.output = 'detections'
 
     logger.info("loading checkpoint done.")
-    if args.dataset == 'ycbv':
-        img = cv2.imread("../edgeai-yolox/assets/ti_mustard.png")
-    elif args.dataset == 'lmo':
-        img = cv2.imread("../edgeai-yolox/assets/sample_lmo_pbr.jpg")
-    else:
-        img = cv2.imread("../edgeai-yolox/assets/dog.jpg")
-    img, ratio = preprocess(img, (args.input_height, args.input_width))
+    # if args.dataset == 'ycbv':
+    #     img = cv2.imread("../edgeai-yolox/assets/ti_mustard.png")
+    # elif args.dataset == 'lmo':
+    #     img = cv2.imread("../edgeai-yolox/assets/sample_lmo_pbr.jpg")
+    # else:
+    #     img = cv2.imread("../edgeai-yolox/assets/dog.jpg")
+    img = np.zeros((args.input_height, args.input_width, 3), dtype=np.uint8)
+    img, _ = preprocess(img, (args.input_height, args.input_width))
     img = img[None, ...]
     img = img.astype('float32')
     img = torch.from_numpy(img)
@@ -308,10 +310,10 @@ def main(kwargs=None, exp=None):
     else:
         import onnx
         onnx.shape_inference.infer_shapes_path(args.output_name, args.output_name)
-
-    export_prototxt(model, img, args.output_name, args.task)
-    logger.info("generated prototxt {}".format(args.output_name.replace('onnx', 'prototxt')))
-
+    
+    if args.export_det:
+        export_prototxt(model, img, args.output_name, args.task)
+        logger.info("generated prototxt {}".format(args.output_name.replace('onnx', 'prototxt')))
 
 def run_export(**kwargs):
     logger.info("kwargs value: {}".format(kwargs))
